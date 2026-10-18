@@ -12,7 +12,7 @@ import java.nio.channels.FileChannel;
 
 public class YoloDetector {
     private Interpreter interpreter;
-    private int INPUT_SIZE = 320; // Roboflow fast training uses 320x320 or 640x640
+    private int INPUT_SIZE = 640; 
     
     public YoloDetector(Context context) {
         try {
@@ -21,7 +21,6 @@ public class YoloDetector {
             options.setNumThreads(4);
             interpreter = new Interpreter(model, options);
             
-            // Auto-detect input size from the model
             int[] shape = interpreter.getInputTensor(0).shape();
             INPUT_SIZE = shape[1]; 
         } catch (Exception e) { e.printStackTrace(); }
@@ -61,7 +60,8 @@ public class YoloDetector {
         int numBoxes = outputShape[2];
         for (int i = 0; i < numBoxes; i++) {
             float conf = output[0][4][i];
-            if (conf > 0.40f && conf > highestConf) {
+            // Baixamos para 0.15 para pegar inimigos a longa distância
+            if (conf > 0.15f && conf > highestConf) {
                 highestConf = conf;
                 bestX = output[0][0][i];
                 bestY = output[0][1][i];
@@ -70,7 +70,7 @@ public class YoloDetector {
             }
         }
 
-        if (highestConf > 0.40f) {
+        if (highestConf > 0.15f) {
             float scaleX = bitmap.getWidth() / (float) INPUT_SIZE;
             float scaleY = bitmap.getHeight() / (float) INPUT_SIZE;
             float left = (bestX - bestW / 2) * scaleX;
