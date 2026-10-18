@@ -3,8 +3,8 @@ package com.ghost.app;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import rikka.shizuku.Shizuku;
-import rikka.shizuku.ShizukuRemoteProcess;
 import moe.shizuku.server.IShizukuService;
+import moe.shizuku.server.IRemoteProcess;
 
 public class ShizukuInputInjector {
     public static boolean init() {
@@ -12,12 +12,13 @@ public class ShizukuInputInjector {
     }
 
     public static void swipe(float startX, float startY, float endX, float endY, long durationMs) {
-        // Executa o comando 'input swipe' com permissão de shell (UID 2000) via Shizuku
         String cmd = "input swipe " + (int)startX + " " + (int)startY + " " + (int)endX + " " + (int)endY + " " + durationMs;
         
         try {
             IShizukuService service = IShizukuService.Stub.asInterface(Shizuku.getBinder());
-            ShizukuRemoteProcess process = service.newProcess(new String[]{"sh", "-c", cmd}, null, null);
+            // Corrigido: O retorno agora é IRemoteProcess
+            IRemoteProcess process = service.newProcess(new String[]{"sh", "-c", cmd}, null, null);
+            
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             while ((reader.readLine()) != null) {} // Consome saída
             process.waitFor();
