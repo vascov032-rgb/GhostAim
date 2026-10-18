@@ -8,7 +8,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.hardware.display.DisplayManager;
@@ -23,6 +25,7 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
 import java.io.BufferedReader;
@@ -34,6 +37,7 @@ import java.nio.ByteBuffer;
 public class OverlayService extends Service {
     private WindowManager windowManager;
     private TextView overlayText;
+    private View debugBox; // Quadrado vermelho visual
     public static boolean isCheatActive = false;
 
     private MediaProjection mediaProjection;
@@ -41,8 +45,9 @@ public class OverlayService extends Service {
     private int screenWidth, screenHeight, screenDensity;
     private YoloDetector yolo;
     
-    private int fireX = 2020; // Valor pego na sua print
-    private int fireY = 922;  // Valor pego na sua print
+    private int fireX = 2020; 
+    private int fireY = 922;  
+    private int tolerance = 200; // 200 pixels para cada lado (quadrado de 400x400)
 
     private long lastAimTime = 0;
     private HandlerThread backgroundThread;
@@ -61,11 +66,34 @@ public class OverlayService extends Service {
         backgroundHandler = new Handler(backgroundThread.getLooper());
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        
+        // Texto flutuante
         overlayText = new TextView(this); overlayText.setText("Ghost: OFF");
         overlayText.setTextColor(0xFFFF0000); overlayText.setBackgroundColor(0x99000000); overlayText.setPadding(20, 20, 20, 20);
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.START; params.x = 50; params.y = 200;
         windowManager.addView(overlayText, params);
+        
+        // Quadrado vermelho de DEBUG
+        debugBox = new View(this) {
+            @Override protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                Paint paint = new Paint();
+                paint.setColor(Color.RED);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(10);
+                canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
+            }
+        };
+        WindowManager.LayoutParams debugParams = new WindowManager.LayoutParams(
+                tolerance * 2, tolerance * 2, // Tamanho do quadrado
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT);
+        debugParams.gravity = Gravity.TOP | Gravity.START; 
+        debugParams.x = fireX - tolerance; 
+        debugParams.y = fireY - tolerance;
+        windowManager.addView(debugBox, debugParams);
         
         startProxyServer();
     }
@@ -115,10 +143,9 @@ public class OverlayService extends Service {
         float centerX = screenWidth / 2f;
         float centerY = screenHeight / 2f;
 
-        // --- ÁREA DE TOLERÂNCIA (Caixa de 300x300 ao redor do centro) ---
-        int tolerance = 150; // 150 pixels para cada lado
+        // Usa o centro da caixa de tolerância para ler os pixels
         int startX = Math.max(0, fireX - tolerance);
-        int endX = Math.min(screenWidth, fireX + tolerance);
+        int endX = Math.min(bmpWidth, fireX + tolerance);
         int startY = Math.max(0, fireY - tolerance);
         int endY = Math.min(screenHeight, fireY + tolerance);
         
@@ -129,7 +156,6 @@ public class OverlayService extends Service {
             for (int x = startX; x < endX; x += 10) {
                 int p = bitmap.getPixel(x, y);
                 int brightness = (Color.red(p) + Color.green(p) + Color.blue(p)) / 3;
-                // A cor do dedo/botão apertado clareia a área
                 if (brightness > 110) { 
                     brightPixels++;
                 }
@@ -137,7 +163,6 @@ public class OverlayService extends Service {
             }
         }
         
-        // Se 10% dessa área ficar clara, é porque o dedo encostou
         boolean isFiring = (brightPixels > (totalPixels * 0.10)); 
 
         if (isFiring) {
@@ -198,6 +223,13 @@ public class OverlayService extends Service {
         }
     }
     private void updateOverlayText(String text) { if (overlayText != null) overlayText.post(() -> { overlayText.setText(text); }); }
-    @Override public void onDestroy() { super.onDestroy(); if (overlayText != null) windowManager.removeView(overlayText); if (mediaProjection != null) mediaProjection.stop(); if (backgroundThread != null) backgroundThread.quitSafely(); }
+    
+    @Override public void onDestroy() { 
+        super.onDestroy(); 
+        if (overlayText != null) windowManager.removeView(overlayText); 
+        if (debugBox != null) windowManager.removeView(debugBox);
+        if (mediaProjection != null) mediaProjection.stop(); 
+        if (backgroundThread != null) backgroundThread.quitSafely(); 
+    }
     @Override public IBinder onBind(Intent intent) { return null; }
 }
