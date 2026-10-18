@@ -1,6 +1,8 @@
 package com.ghost.app;
 
+import android.os.ParcelFileDescriptor;
 import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import rikka.shizuku.Shizuku;
 import moe.shizuku.server.IShizukuService;
@@ -16,14 +18,19 @@ public class ShizukuInputInjector {
         
         try {
             IShizukuService service = IShizukuService.Stub.asInterface(Shizuku.getBinder());
-            // Corrigido: O retorno agora é IRemoteProcess
             IRemoteProcess process = service.newProcess(new String[]{"sh", "-c", cmd}, null, null);
             
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            while ((reader.readLine()) != null) {} // Consome saída
+            ParcelFileDescriptor pfd = process.getInputStream();
+            if (pfd != null) {
+                FileInputStream fis = new FileInputStream(pfd.getFileDescriptor());
+                BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
+                while ((reader.readLine()) != null) {} // Consome saída
+                reader.close();
+            }
+            
             process.waitFor();
         } catch (Exception e) {
-            // Silencioso para não travar o loop
+            // Silencioso
         }
     }
 }
