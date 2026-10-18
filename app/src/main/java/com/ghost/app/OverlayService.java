@@ -25,6 +25,7 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
@@ -37,7 +38,6 @@ import java.nio.ByteBuffer;
 public class OverlayService extends Service {
     private WindowManager windowManager;
     private TextView overlayText;
-    private View debugBox; // Quadrado vermelho visual
     public static boolean isCheatActive = false;
 
     private MediaProjection mediaProjection;
@@ -47,7 +47,7 @@ public class OverlayService extends Service {
     
     private int fireX = 2020; 
     private int fireY = 922;  
-    private int tolerance = 200; // 200 pixels para cada lado (quadrado de 400x400)
+    private boolean isTouchingFireButton = false;
 
     private long lastAimTime = 0;
     private HandlerThread backgroundThread;
@@ -74,27 +74,29 @@ public class OverlayService extends Service {
         params.gravity = Gravity.TOP | Gravity.START; params.x = 50; params.y = 200;
         windowManager.addView(overlayText, params);
         
-        // Quadrado vermelho de DEBUG
-        debugBox = new View(this) {
-            @Override protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                Paint paint = new Paint();
-                paint.setColor(Color.RED);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(10);
-                canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
+        // --- BOTÃO INVISÍVEL EXATAMENTE NO BOTÃO DE TIRO ---
+        View fireButtonOverlay = new View(this) {
+            @Override public boolean onTouchEvent(MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    isTouchingFireButton = true;
+                } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    isTouchingFireButton = false;
+                }
+                return false; // Retorna FALSE para o tiro passar para o jogo!
             }
         };
-        WindowManager.LayoutParams debugParams = new WindowManager.LayoutParams(
-                tolerance * 2, tolerance * 2, // Tamanho do quadrado
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                PixelFormat.TRANSLUCENT);
-        debugParams.gravity = Gravity.TOP | Gravity.START; 
-        debugParams.x = fireX - tolerance; 
-        debugParams.y = fireY - tolerance;
-        windowManager.addView(debugBox, debugParams);
         
+        WindowManager.LayoutParams fireParams = new WindowManager.LayoutParams(
+                300, 300, // Tamanho do botão invisível (300x300)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT);
+        fireParams.gravity = Gravity.TOP | Gravity.START; 
+        fireParams.x = fireX - 150; 
+        fireParams.y = fireY - 150;
+        windowManager.addView(fireButtonOverlay, fireParams);
+        // --------------------------------------------------
+
         startProxyServer();
     }
 
@@ -130,6 +132,12 @@ public class OverlayService extends Service {
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastAimTime < 80) return; 
 
+        // Se o botão invisível não está sendo tocado, não faz nada
+        if (!isTouchingFireButton) {
+            updateOverlayText("Ghost: ON (Aguardando Tiro)");
+            return;
+        }
+
         Image.Plane[] planes = image.getPlanes();
         ByteBuffer buffer = planes[0].getBuffer();
         int pixelStride = planes[0].getPixelStride();
@@ -143,52 +151,27 @@ public class OverlayService extends Service {
         float centerX = screenWidth / 2f;
         float centerY = screenHeight / 2f;
 
-        // Usa o centro da caixa de tolerância para ler os pixels
-        int startX = Math.max(0, fireX - tolerance);
-        int endX = Math.min(bmpWidth, fireX + tolerance);
-        int startY = Math.max(0, fireY - tolerance);
-        int endY = Math.min(screenHeight, fireY + tolerance);
+        updateOverlayText("TIRO! IA PROCURANDO...");
+        RectF head = yolo.detect(bitmap);
         
-        int brightPixels = 0;
-        int totalPixels = 0;
-        
-        for (int y = startY; y < endY; y += 10) {
-            for (int x = startX; x < endX; x += 10) {
-                int p = bitmap.getPixel(x, y);
-                int brightness = (Color.red(p) + Color.green(p) + Color.blue(p)) / 3;
-                if (brightness > 110) { 
-                    brightPixels++;
-                }
-                totalPixels++;
-            }
-        }
-        
-        boolean isFiring = (brightPixels > (totalPixels * 0.10)); 
+        if (head != null) {
+            updateOverlayText("CABECA ACHADA! MIRANDO...");
+            float targetX = head.centerX(); float targetY = head.centerY();
 
-        if (isFiring) {
-            updateOverlayText("TIRO! IA PROCURANDO...");
-            RectF head = yolo.detect(bitmap);
-            
-            if (head != null) {
-                updateOverlayText("CABECA ACHADA! MIRANDO...");
-                float targetX = head.centerX(); float targetY = head.centerY();
-
-                if (Math.abs(targetX - centerX) > 15 || Math.abs(targetY - centerY) > 15) {
-                    float deltaX = (targetX - centerX) * 0.8f; 
-                    float deltaY = (targetY - centerY) * 0.8f;
-                    float swipeEndX = centerX - deltaX;
-                    float swipeEndY = centerY - deltaY;
-                    if (GhostAccessibilityService.instance != null) {
-                        GhostAccessibilityService.instance.swipeAim(centerX, centerY, swipeEndX, swipeEndY);
-                    }
+            if (Math.abs(targetX - centerX) > 15 || Math.abs(targetY - centerY) > 15) {
+                float deltaX = (targetX - centerX) * 0.8f; 
+                float deltaY = (targetY - centerY) * 0.8f;
+                float swipeEndX = centerX - deltaX;
+                float swipeEndY = centerY - deltaY;
+                if (GhostAccessibilityService.instance != null) {
+                    GhostAccessibilityService.instance.swipeAim(centerX, centerY, swipeEndX, swipeEndY);
                 }
-            } else {
-                updateOverlayText("TIRO, MAS IA NAO ACHOU");
             }
-            lastAimTime = currentTime;
         } else {
-            updateOverlayText("Ghost: ON (Aguardando Tiro)");
+            updateOverlayText("TIRO, MAS IA NAO ACHOU");
         }
+        
+        lastAimTime = currentTime;
         bitmap.recycle();
     }
 
@@ -227,7 +210,6 @@ public class OverlayService extends Service {
     @Override public void onDestroy() { 
         super.onDestroy(); 
         if (overlayText != null) windowManager.removeView(overlayText); 
-        if (debugBox != null) windowManager.removeView(debugBox);
         if (mediaProjection != null) mediaProjection.stop(); 
         if (backgroundThread != null) backgroundThread.quitSafely(); 
     }
