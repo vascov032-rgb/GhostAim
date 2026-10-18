@@ -110,48 +110,51 @@ public class OverlayService extends Service {
         float centerX = screenWidth / 2f;
         float centerY = screenHeight / 2f;
 
-        // GATILHO DE MIRA VERMELHA
         int centerPixel = bitmap.getPixel((int)centerX, (int)centerY);
         int r = Color.red(centerPixel);
         int g = Color.green(centerPixel);
         int b = Color.blue(centerPixel);
 
-        // Vermelho puro ou alaranjado (mira do FF)
         boolean isAimingAtEnemy = (r > 100 && g < 90 && b < 90);
 
         if (isAimingAtEnemy) {
-            updateOverlayText("MIRA VERMELHA! IA PROCURANDO...");
-            
-            // ZOOM NA IA: Aumentamos a caixa para 1000x1000 para pegar a cabeça
-            int cropSize = 1000; 
+            int cropSize = 800; 
             int cropX = (int)centerX - (cropSize / 2);
             int cropY = (int)centerY - (cropSize / 2);
-            
             if (cropX < 0) cropX = 0;
             if (cropY < 0) cropY = 0;
             if (cropX + cropSize > bmpWidth) cropSize = bmpWidth - cropX;
             if (cropY + cropSize > screenHeight) cropSize = screenHeight - cropY;
 
             Bitmap cropped = Bitmap.createBitmap(bitmap, cropX, cropY, cropSize, cropSize);
-            RectF head = yolo.detect(cropped);
             
-            if (head != null) {
-                updateOverlayText("CABECA ACHADA! MIRANDO...");
-                float targetX = head.centerX() + cropX;
-                float targetY = head.centerY() + cropY;
+            try {
+                RectF head = yolo.detect(cropped);
+                String confStr = String.format("%.0f%%", YoloDetector.lastMaxConf * 100);
+                
+                if (YoloDetector.lastMaxConf == -99.0f) {
+                    updateOverlayText("ERRO NO MODELO TFLITE");
+                } else if (head != null) {
+                    updateOverlayText("CABECA! (" + confStr + ") MIRANDO...");
+                    float targetX = head.centerX() + cropX;
+                    float targetY = head.centerY() + cropY;
 
-                if (Math.abs(targetX - centerX) > 10 || Math.abs(targetY - centerY) > 10) {
-                    float deltaX = (targetX - centerX) * 0.8f; 
-                    float deltaY = (targetY - centerY) * 0.8f;
-                    float swipeEndX = centerX - deltaX;
-                    float swipeEndY = centerY - deltaY;
-                    if (GhostAccessibilityService.instance != null) {
-                        GhostAccessibilityService.instance.swipeAim(centerX, centerY, swipeEndX, swipeEndY);
+                    if (Math.abs(targetX - centerX) > 10 || Math.abs(targetY - centerY) > 10) {
+                        float deltaX = (targetX - centerX) * 0.8f; 
+                        float deltaY = (targetY - centerY) * 0.8f;
+                        float swipeEndX = centerX - deltaX;
+                        float swipeEndY = centerY - deltaY;
+                        if (GhostAccessibilityService.instance != null) {
+                            GhostAccessibilityService.instance.swipeAim(centerX, centerY, swipeEndX, swipeEndY);
+                        }
                     }
+                } else {
+                    updateOverlayText("MIRA VERMELHA. IA VIU: " + confStr);
                 }
-            } else {
-                updateOverlayText("MIRA VERMELHA, MAS IA NAO ACHOU");
+            } catch (Exception e) {
+                updateOverlayText("ERRO IA: " + e.getMessage());
             }
+            
             lastAimTime = currentTime;
             cropped.recycle();
         } else {
