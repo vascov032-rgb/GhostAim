@@ -1,0 +1,16 @@
+apply plugin: 'com.android.application'
+android {
+    namespace 'com.ghost.app'
+    compileSdk 33
+    defaultConfig {
+        applicationId "com.ghost.app"
+        minSdk 24
+        targetSdk 33
+        versionCode 3
+        versionName "3.0"
+    }
+    aaptOptions { noCompress "tflite" }
+}
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite:2.14.0'
+}
