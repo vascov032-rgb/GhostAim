@@ -1,9 +1,10 @@
 package com.ghost.app;
 
-import android.os.SystemClock;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import rikka.shizuku.Shizuku;
+import rikka.shizuku.ShizukuRemoteProcess;
+import moe.shizuku.server.IShizukuService;
 
 public class ShizukuInputInjector {
     public static boolean init() {
@@ -15,15 +16,13 @@ public class ShizukuInputInjector {
         String cmd = "input swipe " + (int)startX + " " + (int)startY + " " + (int)endX + " " + (int)endY + " " + durationMs;
         
         try {
-            Process process = Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null);
+            IShizukuService service = IShizukuService.Stub.asInterface(Shizuku.getBinder());
+            ShizukuRemoteProcess process = service.newProcess(new String[]{"sh", "-c", cmd}, null, null);
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                // Apenas consome a saída para evitar bloqueio
-            }
+            while ((reader.readLine()) != null) {} // Consome saída
             process.waitFor();
         } catch (Exception e) {
-            // Silencioso para não travar o loop de captura
+            // Silencioso para não travar o loop
         }
     }
 }
