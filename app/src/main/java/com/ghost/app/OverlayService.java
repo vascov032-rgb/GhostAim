@@ -49,8 +49,7 @@ public class OverlayService extends Service {
         super.onCreate();
         startForegroundService();
         yolo = new YoloDetector(this);
-        shizukuReady = ShizukuInputInjector.init();
-
+        
         backgroundThread = new HandlerThread("GhostThread");
         backgroundThread.start();
         backgroundHandler = new Handler(backgroundThread.getLooper());
@@ -61,6 +60,16 @@ public class OverlayService extends Service {
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.START; params.x = 50; params.y = 50;
         windowManager.addView(overlayText, params);
+
+        // Fica tentando conectar ao Shizuku a cada 2 segundos
+        new Thread(() -> {
+            while (true) {
+                if (!shizukuReady) {
+                    shizukuReady = ShizukuInputInjector.init();
+                }
+                try { Thread.sleep(2000); } catch (Exception e) {}
+            }
+        }).start();
 
         startProxyServer();
     }
@@ -114,17 +123,26 @@ public class OverlayService extends Service {
                 if (cropX + cropSize > bmpWidth) cropSize = bmpWidth - cropX;
                 if (cropY + cropSize > screenHeight) cropSize = screenHeight - cropY;
                 Bitmap cropped = Bitmap.createBitmap(bitmap, cropX, cropY, cropSize, cropSize);
+                
                 try {
                     RectF head = yolo.detect(cropped);
                     String confStr = String.format("%.0f%%", YoloDetector.lastMaxConf * 100);
+                    
                     if (head != null) {
-                        updateOverlayText("SNAP SHIZUKU (" + confStr + ")");
+                        updateOverlayText("SNAP! (" + confStr + ")");
                         float targetX = head.centerX() + cropX;
                         float targetY = head.centerY() + cropY;
+                        
                         float deltaX = targetX - centerX;
                         float deltaY = targetY - centerY;
+                        
+                        // A MÁGICA: Se o inimigo está na direita (deltaX > 0), 
+                        // o dedo deve arrastar para a direita para a câmera virar.
+                        float swipeEndX = centerX + deltaX;
+                        float swipeEndY = centerY + deltaY;
+
                         if (shizukuReady) {
-                            ShizukuInputInjector.swipe(centerX, centerY, centerX - deltaX, centerY - deltaY, 300);
+                            ShizukuInputInjector.swipe(centerX, centerY, swipeEndX, swipeEndY, 200);
                         }
                         targetLocked = true;
                     } else {
@@ -137,7 +155,11 @@ public class OverlayService extends Service {
             }
         } else {
             targetLocked = false;
-            updateOverlayText(shizukuReady ? "Ghost: ON (Shizuku OK)" : "Ghost: Shizuku OFF");
+            if (shizukuReady) {
+                updateOverlayText("Ghost: ON (Shizuku OK)");
+            } else {
+                updateOverlayText("Ghost: ON (Aguardando Shizuku)");
+            }
         }
         bitmap.recycle();
     }
