@@ -41,6 +41,9 @@ public class OverlayService extends Service {
     private int screenWidth, screenHeight, screenDensity;
     private YoloDetector yolo;
     
+    private int fireX = 2020; // Valor pego na sua print
+    private int fireY = 922;  // Valor pego na sua print
+
     private long lastAimTime = 0;
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
@@ -50,6 +53,9 @@ public class OverlayService extends Service {
         startForegroundService();
         yolo = new YoloDetector(this);
         
+        fireX = getSharedPreferences("GhostPrefs", MODE_PRIVATE).getInt("fireX", 2020);
+        fireY = getSharedPreferences("GhostPrefs", MODE_PRIVATE).getInt("fireY", 922);
+
         backgroundThread = new HandlerThread("GhostThread");
         backgroundThread.start();
         backgroundHandler = new Handler(backgroundThread.getLooper());
@@ -109,12 +115,12 @@ public class OverlayService extends Service {
         float centerX = screenWidth / 2f;
         float centerY = screenHeight / 2f;
 
-        // --- GATILHO DE TIRO (ÁREA MAIOR) ---
-        // Pega toda a área inferior direita (onde o botão fica em qualquer tela)
-        int startX = (int)(screenWidth * 0.70); // 70% da largura
-        int endX = (int)(screenWidth * 0.98);
-        int startY = (int)(screenHeight * 0.60); // 60% da altura
-        int endY = (int)(screenHeight * 0.95);
+        // --- ÁREA DE TOLERÂNCIA (Caixa de 300x300 ao redor do centro) ---
+        int tolerance = 150; // 150 pixels para cada lado
+        int startX = Math.max(0, fireX - tolerance);
+        int endX = Math.min(screenWidth, fireX + tolerance);
+        int startY = Math.max(0, fireY - tolerance);
+        int endY = Math.min(screenHeight, fireY + tolerance);
         
         int brightPixels = 0;
         int totalPixels = 0;
@@ -123,15 +129,16 @@ public class OverlayService extends Service {
             for (int x = startX; x < endX; x += 10) {
                 int p = bitmap.getPixel(x, y);
                 int brightness = (Color.red(p) + Color.green(p) + Color.blue(p)) / 3;
-                if (brightness > 120) { // Baixamos o limite de brilho de 140 para 120
+                // A cor do dedo/botão apertado clareia a área
+                if (brightness > 110) { 
                     brightPixels++;
                 }
                 totalPixels++;
             }
         }
         
-        // Se mais de 5% da área do botão ficar clara, consideramos que está atirando
-        boolean isFiring = (brightPixels > (totalPixels * 0.05)); 
+        // Se 10% dessa área ficar clara, é porque o dedo encostou
+        boolean isFiring = (brightPixels > (totalPixels * 0.10)); 
 
         if (isFiring) {
             updateOverlayText("TIRO! IA PROCURANDO...");
@@ -155,10 +162,8 @@ public class OverlayService extends Service {
             }
             lastAimTime = currentTime;
         } else {
-            // MODO DEBUG: Mostra o brilho atual na tela para você ver
             updateOverlayText("Ghost: ON (Aguardando Tiro)");
         }
-        
         bitmap.recycle();
     }
 
