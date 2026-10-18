@@ -110,21 +110,20 @@ public class OverlayService extends Service {
         float centerX = screenWidth / 2f;
         float centerY = screenHeight / 2f;
 
-        // --- GATILHO DE MIRA VERMELHA ---
-        // Lê o pixel exato do centro da tela (onde fica a mirinha)
+        // GATILHO DE MIRA VERMELHA
         int centerPixel = bitmap.getPixel((int)centerX, (int)centerY);
         int r = Color.red(centerPixel);
         int g = Color.green(centerPixel);
         int b = Color.blue(centerPixel);
 
-        // Se o pixel for vermelho (R alto, G e B baixos), a mira está no inimigo
-        boolean isAimingAtEnemy = (r > 120 && g < 80 && b < 80);
+        // Vermelho puro ou alaranjado (mira do FF)
+        boolean isAimingAtEnemy = (r > 100 && g < 90 && b < 90);
 
         if (isAimingAtEnemy) {
             updateOverlayText("MIRA VERMELHA! IA PROCURANDO...");
             
-            // ZOOM NA IA: Pega apenas um quadrado de 600x600 no centro da tela
-            int cropSize = 600;
+            // ZOOM NA IA: Aumentamos a caixa para 1000x1000 para pegar a cabeça
+            int cropSize = 1000; 
             int cropX = (int)centerX - (cropSize / 2);
             int cropY = (int)centerY - (cropSize / 2);
             
@@ -138,7 +137,6 @@ public class OverlayService extends Service {
             
             if (head != null) {
                 updateOverlayText("CABECA ACHADA! MIRANDO...");
-                // Soma as coordenadas do recorte de volta para a tela inteira
                 float targetX = head.centerX() + cropX;
                 float targetY = head.centerY() + cropY;
 
