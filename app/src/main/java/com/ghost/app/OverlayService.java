@@ -8,9 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.hardware.display.DisplayManager;
@@ -25,7 +23,6 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
-import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
 import java.io.BufferedReader;
@@ -44,11 +41,6 @@ public class OverlayService extends Service {
     private int screenWidth, screenHeight, screenDensity;
     private YoloDetector yolo;
     
-    private int fireX = 2020; 
-    private int fireY = 922;  
-    
-    private int lastPixelSum = 0; // Para o Gatilho por Diferença
-
     private long lastAimTime = 0;
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
@@ -58,16 +50,12 @@ public class OverlayService extends Service {
         startForegroundService();
         yolo = new YoloDetector(this);
         
-        fireX = getSharedPreferences("GhostPrefs", MODE_PRIVATE).getInt("fireX", 2020);
-        fireY = getSharedPreferences("GhostPrefs", MODE_PRIVATE).getInt("fireY", 922);
-
         backgroundThread = new HandlerThread("GhostThread");
         backgroundThread.start();
         backgroundHandler = new Handler(backgroundThread.getLooper());
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         
-        // Texto flutuante no CANTO SUPERIOR ESQUERDO (não atrapalha o tiro)
         overlayText = new TextView(this); overlayText.setText("Ghost: OFF");
         overlayText.setTextColor(0xFFFF0000); overlayText.setBackgroundColor(0x99000000); overlayText.setPadding(20, 20, 20, 20);
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
@@ -122,31 +110,21 @@ public class OverlayService extends Service {
         float centerX = screenWidth / 2f;
         float centerY = screenHeight / 2f;
 
-        // --- GATILHO POR DIFERENÇA DE PIXEL ---
-        // Lê uma caixa de 40x40 no local do botão e soma a cor
-        int currentPixelSum = 0;
-        for (int y = fireY - 20; y < fireY + 20; y += 4) {
-            for (int x = fireX - 20; x < fireX + 20; x += 4) {
-                if (x >= 0 && y >= 0 && x < bmpWidth && y < screenHeight) {
-                    int p = bitmap.getPixel(x, y);
-                    currentPixelSum += (Color.red(p) + Color.green(p) + Color.blue(p));
-                }
-            }
-        }
-        
-        // Se a soma mudou muito em relação ao frame anterior, é porque o dedo encostou
-        boolean isFiring = false;
-        if (Math.abs(currentPixelSum - lastPixelSum) > 3000) {
-            isFiring = true;
-        }
-        lastPixelSum = currentPixelSum; 
-        // --------------------------------------
+        // --- GATILHO DE MIRA VERMELHA ---
+        // Lê o pixel exato do centro da tela (onde fica a mirinha)
+        int centerPixel = bitmap.getPixel((int)centerX, (int)centerY);
+        int r = Color.red(centerPixel);
+        int g = Color.green(centerPixel);
+        int b = Color.blue(centerPixel);
 
-        if (isFiring) {
-            updateOverlayText("TIRO! IA PROCURANDO...");
+        // Se o pixel for vermelho (R alto, G e B baixos), a mira está no inimigo
+        boolean isAimingAtEnemy = (r > 120 && g < 80 && b < 80);
+
+        if (isAimingAtEnemy) {
+            updateOverlayText("MIRA VERMELHA! IA PROCURANDO...");
             
-            // ZOOM NA IA: Pega apenas um quadrado de 800x800 no centro da tela
-            int cropSize = 800;
+            // ZOOM NA IA: Pega apenas um quadrado de 600x600 no centro da tela
+            int cropSize = 600;
             int cropX = (int)centerX - (cropSize / 2);
             int cropY = (int)centerY - (cropSize / 2);
             
@@ -164,7 +142,7 @@ public class OverlayService extends Service {
                 float targetX = head.centerX() + cropX;
                 float targetY = head.centerY() + cropY;
 
-                if (Math.abs(targetX - centerX) > 15 || Math.abs(targetY - centerY) > 15) {
+                if (Math.abs(targetX - centerX) > 10 || Math.abs(targetY - centerY) > 10) {
                     float deltaX = (targetX - centerX) * 0.8f; 
                     float deltaY = (targetY - centerY) * 0.8f;
                     float swipeEndX = centerX - deltaX;
@@ -174,12 +152,12 @@ public class OverlayService extends Service {
                     }
                 }
             } else {
-                updateOverlayText("TIRO, MAS IA NAO ACHOU");
+                updateOverlayText("MIRA VERMELHA, MAS IA NAO ACHOU");
             }
             lastAimTime = currentTime;
             cropped.recycle();
         } else {
-            updateOverlayText("Ghost: ON (Aguardando Tiro)");
+            updateOverlayText("Ghost: ON (Mira Branca)");
         }
         bitmap.recycle();
     }
