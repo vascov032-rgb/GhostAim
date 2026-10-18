@@ -24,8 +24,8 @@ public class GhostAccessibilityService extends AccessibilityService {
         path.lineTo(endX, endY);
         
         GestureDescription.Builder builder = new GestureDescription.Builder();
-        // 40ms: Um "estalo" rápido que o Free Fire reconhece como movimento de mouse/câmera
-        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 40));
+        // 150ms: Tempo suficiente para o Free Fire registrar como movimento de câmera e não como clique
+        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 150));
         dispatchGesture(builder.build(), null, null);
     }
 }

@@ -41,7 +41,7 @@ public class OverlayService extends Service {
     private int screenWidth, screenHeight, screenDensity;
     private YoloDetector yolo;
     
-    private long lastAimTime = 0;
+    private boolean targetLocked = false; // Trava para puxar apenas UMA vez
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
 
@@ -94,9 +94,6 @@ public class OverlayService extends Service {
     }
 
     private void processFrame(Image image) {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastAimTime < 100) return; 
-
         Image.Plane[] planes = image.getPlanes();
         ByteBuffer buffer = planes[0].getBuffer();
         int pixelStride = planes[0].getPixelStride();
@@ -115,55 +112,66 @@ public class OverlayService extends Service {
         int g = Color.green(centerPixel);
         int b = Color.blue(centerPixel);
 
+        // Verifica se a mira está vermelha
         boolean isAimingAtEnemy = (r > 100 && g < 90 && b < 90);
 
         if (isAimingAtEnemy) {
-            int cropSize = 800; 
-            int cropX = (int)centerX - (cropSize / 2);
-            int cropY = (int)centerY - (cropSize / 2);
-            if (cropX < 0) cropX = 0;
-            if (cropY < 0) cropY = 0;
-            if (cropX + cropSize > bmpWidth) cropSize = bmpWidth - cropX;
-            if (cropY + cropSize > screenHeight) cropSize = screenHeight - cropY;
+            // Se a mira está vermelha, mas ainda não travamos o alvo
+            if (!targetLocked) {
+                int cropSize = 800; 
+                int cropX = (int)centerX - (cropSize / 2);
+                int cropY = (int)centerY - (cropSize / 2);
+                if (cropX < 0) cropX = 0;
+                if (cropY < 0) cropY = 0;
+                if (cropX + cropSize > bmpWidth) cropSize = bmpWidth - cropX;
+                if (cropY + cropSize > screenHeight) cropSize = screenHeight - cropY;
 
-            Bitmap cropped = Bitmap.createBitmap(bitmap, cropX, cropY, cropSize, cropSize);
-            
-            try {
-                RectF head = yolo.detect(cropped);
-                String confStr = String.format("%.0f%%", YoloDetector.lastMaxConf * 100);
+                Bitmap cropped = Bitmap.createBitmap(bitmap, cropX, cropY, cropSize, cropSize);
                 
-                if (YoloDetector.lastMaxConf == -99.0f) {
-                    updateOverlayText("ERRO NO MODELO TFLITE");
-                } else if (head != null) {
-                    updateOverlayText("CABECA! (" + confStr + ") MIRANDO...");
-                    float targetX = head.centerX() + cropX;
-                    float targetY = head.centerY() + cropY;
-
-                    if (Math.abs(targetX - centerX) > 10 || Math.abs(targetY - centerY) > 10) {
-                        // Multiplicador de sensibilidade: 1.5 para puxar mais forte
-                        float deltaX = (targetX - centerX) * 1.5f; 
-                        float deltaY = (targetY - centerY) * 1.5f;
+                try {
+                    RectF head = yolo.detect(cropped);
+                    String confStr = String.format("%.0f%%", YoloDetector.lastMaxConf * 100);
+                    
+                    if (head != null) {
+                        updateOverlayText("SNAP! (" + confStr + ")");
                         
-                        // Inverte o sinal para arrastar o dedo na direção contrária à mira
-                        float swipeEndX = centerX - deltaX;
-                        float swipeEndY = centerY - deltaY;
+                        float targetX = head.centerX() + cropX;
+                        float targetY = head.centerY() + cropY;
+
+                        // Calcula a distância
+                        float deltaX = targetX - centerX;
+                        float deltaY = targetY - centerY;
+                        
+                        // Sensibilidade de 2.0 para puxar com força total
+                        float sensitivity = 2.0f; 
+                        
+                        // Para mover a câmera para a direita, você arrasta o dedo para a esquerda.
+                        // Como queremos puxar para o inimigo, o arrasto é na direção contrária do delta.
+                        float swipeEndX = centerX - (deltaX * sensitivity);
+                        float swipeEndY = centerY - (deltaY * sensitivity);
                         
                         if (GhostAccessibilityService.instance != null) {
                             GhostAccessibilityService.instance.swipeAim(centerX, centerY, swipeEndX, swipeEndY);
                         }
+                        
+                        // TRAVA O ALVO PARA NÃO PUXAR MAIS
+                        targetLocked = true; 
+                    } else {
+                        updateOverlayText("MIRA VERMELHA. IA VIU: " + confStr);
                     }
-                } else {
-                    updateOverlayText("MIRA VERMELHA. IA VIU: " + confStr);
-                }
-            } catch (Exception e) {
-                updateOverlayText("ERRO IA: " + e.getMessage());
+                } catch (Exception e) {}
+                
+                cropped.recycle();
+            } else {
+                // Se já está travado, não faz nada
+                updateOverlayText("ALVO TRAVADO");
             }
-            
-            lastAimTime = currentTime;
-            cropped.recycle();
         } else {
+            // Se a mira ficou branca (perdeu o alvo), destrava para poder puxar de novo
+            targetLocked = false;
             updateOverlayText("Ghost: ON (Mira Branca)");
         }
+        
         bitmap.recycle();
     }
 
