@@ -1,4 +1,5 @@
 package com.ghost.app;
+
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -108,20 +109,29 @@ public class OverlayService extends Service {
         float centerX = screenWidth / 2f;
         float centerY = screenHeight / 2f;
 
-        // GATILHO DE TIRO
-        int fireBtnX = (int)(screenWidth * 0.86); 
-        int fireBtnY = (int)(screenHeight * 0.86);
+        // --- GATILHO DE TIRO (ÁREA MAIOR) ---
+        // Pega toda a área inferior direita (onde o botão fica em qualquer tela)
+        int startX = (int)(screenWidth * 0.70); // 70% da largura
+        int endX = (int)(screenWidth * 0.98);
+        int startY = (int)(screenHeight * 0.60); // 60% da altura
+        int endY = (int)(screenHeight * 0.95);
         
-        int totalBrightness = 0; int count = 0;
-        for (int y = Math.max(0, fireBtnY - 50); y < Math.min(screenHeight, fireBtnY + 50); y += 10) {
-            for (int x = Math.max(0, fireBtnX - 50); x < Math.min(bmpWidth, fireBtnX + 50); x += 10) {
+        int brightPixels = 0;
+        int totalPixels = 0;
+        
+        for (int y = startY; y < endY; y += 10) {
+            for (int x = startX; x < endX; x += 10) {
                 int p = bitmap.getPixel(x, y);
-                totalBrightness += (Color.red(p) + Color.green(p) + Color.blue(p)) / 3;
-                count++;
+                int brightness = (Color.red(p) + Color.green(p) + Color.blue(p)) / 3;
+                if (brightness > 120) { // Baixamos o limite de brilho de 140 para 120
+                    brightPixels++;
+                }
+                totalPixels++;
             }
         }
-        int avgBrightness = totalBrightness / count;
-        boolean isFiring = avgBrightness > 140; 
+        
+        // Se mais de 5% da área do botão ficar clara, consideramos que está atirando
+        boolean isFiring = (brightPixels > (totalPixels * 0.05)); 
 
         if (isFiring) {
             updateOverlayText("TIRO! IA PROCURANDO...");
@@ -145,8 +155,10 @@ public class OverlayService extends Service {
             }
             lastAimTime = currentTime;
         } else {
-            updateOverlayText("Ghost: ON (AGUARDANDO TIRO)");
+            // MODO DEBUG: Mostra o brilho atual na tela para você ver
+            updateOverlayText("Ghost: ON (Aguardando Tiro)");
         }
+        
         bitmap.recycle();
     }
 
@@ -159,7 +171,7 @@ public class OverlayService extends Service {
                     BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                     String cmd = in.readLine();
                     if (cmd != null && cmd.startsWith("ACTIVATE")) {
-                        isCheatActive = true; updateOverlayText("Ghost: ON (AGUARDANDO TIRO)");
+                        isCheatActive = true; updateOverlayText("Ghost: ON");
                     } else if (cmd != null && cmd.startsWith("STOP")) {
                         isCheatActive = false; updateOverlayText("Ghost: OFF");
                     }
