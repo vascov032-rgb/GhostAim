@@ -95,7 +95,7 @@ public class OverlayService extends Service {
 
     private void processFrame(Image image) {
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastAimTime < 80) return; 
+        if (currentTime - lastAimTime < 100) return; 
 
         Image.Plane[] planes = image.getPlanes();
         ByteBuffer buffer = planes[0].getBuffer();
@@ -140,10 +140,14 @@ public class OverlayService extends Service {
                     float targetY = head.centerY() + cropY;
 
                     if (Math.abs(targetX - centerX) > 10 || Math.abs(targetY - centerY) > 10) {
-                        float deltaX = (targetX - centerX) * 0.8f; 
-                        float deltaY = (targetY - centerY) * 0.8f;
+                        // Multiplicador de sensibilidade: 1.5 para puxar mais forte
+                        float deltaX = (targetX - centerX) * 1.5f; 
+                        float deltaY = (targetY - centerY) * 1.5f;
+                        
+                        // Inverte o sinal para arrastar o dedo na direção contrária à mira
                         float swipeEndX = centerX - deltaX;
                         float swipeEndY = centerY - deltaY;
+                        
                         if (GhostAccessibilityService.instance != null) {
                             GhostAccessibilityService.instance.swipeAim(centerX, centerY, swipeEndX, swipeEndY);
                         }
