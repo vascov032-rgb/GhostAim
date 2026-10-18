@@ -61,7 +61,7 @@ public class OverlayService extends Service {
         params.gravity = Gravity.TOP | Gravity.START; params.x = 50; params.y = 50;
         windowManager.addView(overlayText, params);
 
-        // Fica tentando conectar ao Shizuku a cada 2 segundos
+        // Verifica o Shizuku a cada 2 segundos
         new Thread(() -> {
             while (true) {
                 if (!shizukuReady) {
@@ -129,17 +129,17 @@ public class OverlayService extends Service {
                     String confStr = String.format("%.0f%%", YoloDetector.lastMaxConf * 100);
                     
                     if (head != null) {
-                        updateOverlayText("SNAP! (" + confStr + ")");
+                        updateOverlayText("SNAP SHIZUKU (" + confStr + ")");
                         float targetX = head.centerX() + cropX;
                         float targetY = head.centerY() + cropY;
                         
                         float deltaX = targetX - centerX;
                         float deltaY = targetY - centerY;
                         
-                        // A MÁGICA: Se o inimigo está na direita (deltaX > 0), 
-                        // o dedo deve arrastar para a direita para a câmera virar.
-                        float swipeEndX = centerX + deltaX;
-                        float swipeEndY = centerY + deltaY;
+                        // Para mover a câmera para a direita, o dedo deve arrastar para a esquerda.
+                        // Se o alvo está na direita (deltaX > 0), o swipe deve ser centerX - deltaX.
+                        float swipeEndX = centerX - deltaX;
+                        float swipeEndY = centerY - deltaY;
 
                         if (shizukuReady) {
                             ShizukuInputInjector.swipe(centerX, centerY, swipeEndX, swipeEndY, 200);
